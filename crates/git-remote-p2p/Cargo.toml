@@ -1,0 +1,11 @@
+[package]
+name = "git-remote-p2p"
+description = "Git remote helper for p2p:// URLs, backed by the ogGIT daemon."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+og-core.workspace = true
+og-ctl.workspace = true
+anyhow.workspace = true

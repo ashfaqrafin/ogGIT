@@ -1,0 +1,13 @@
+[package]
+name = "og-store"
+description = "ogGIT storage: bare repos with per-peer namespaces, verified with real git."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+og-core.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+tempfile.workspace = true
+tracing.workspace = true

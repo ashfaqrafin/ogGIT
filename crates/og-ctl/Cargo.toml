@@ -1,0 +1,13 @@
+[package]
+name = "og-ctl"
+description = "Local control protocol between the og CLI, git-remote-p2p and the ogGIT daemon."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+og-core.workspace = true
+anyhow.workspace = true
+blake3.workspace = true
+serde.workspace = true
+serde_json.workspace = true

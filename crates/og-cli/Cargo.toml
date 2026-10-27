@@ -1,0 +1,21 @@
+[package]
+name = "og-cli"
+description = "The og command: set up, share and run ogGIT repos."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "og"
+path = "src/main.rs"
+
+[dependencies]
+og-core.workspace = true
+og-ctl.workspace = true
+og-net.workspace = true
+og-node.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+libc = "0.2"
+tokio.workspace = true
+tracing-subscriber.workspace = true

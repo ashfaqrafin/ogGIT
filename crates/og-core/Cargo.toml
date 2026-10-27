@@ -1,0 +1,17 @@
+[package]
+name = "og-core"
+description = "ogGIT data model: identities, signed refs, canonical branches, invites. No I/O."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+iroh-base = { version = "1.4", default-features = false, features = ["key"] }
+serde.workspace = true
+serde_json.workspace = true
+blake3.workspace = true
+data-encoding.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

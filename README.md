@@ -4,6 +4,35 @@ Oct 21, 2026 · @Ashfaq Khan
 
 A P2P Git is a Rust daemon plus a git remote helper that replicates ordinary Git repos between peers over QUIC, with signed refs for trust. Build it in six phases, starting with two nodes and one signed push.
 
+## Status
+
+Phases 0 and 1 are built: nodes replicate repos over Iroh with signed refs, and plain `git clone`, `fetch` and `push` work through `p2p://` URLs. The rest of this document is the design it follows. The formats as built are specified in [docs/spec/](docs/spec/).
+
+```bash
+cargo install --path crates/og-cli            # the og command and daemon
+cargo install --path crates/git-remote-p2p    # lets git handle p2p:// URLs
+
+# In an existing Git repo
+og init                  # creates your key, the identity document and an `og` remote
+git push og main         # signs your refs; peers pull from you
+og circle invite         # prints an og://join/... link
+
+# On another machine
+og join og://join/...    # follows the repo and clones it
+```
+
+The daemon starts on demand and keeps its state in `~/.og` (override with `OG_HOME`). `og status` shows peers and signed sequence numbers. `og canonical` explains which commit each branch resolves to.
+
+Differences from the plan below:
+
+- Names use `og` instead of `mygit`: `og:` repo IDs, `refs/og/*`, `og/fetch/1`.
+- Signed refs carry a `repo` line, so a manifest cannot be replayed into another repo.
+- Announcements are flooded directly to known peers instead of going through `iroh-gossip`.
+
+Not built yet: `iroh-gossip`, DHT and mDNS discovery, the seed protocol, delegate promotion and key rotation, issues and patches, racing several peers, large files, fuzzing and network-simulation tests.
+
+Tests: `cargo test --workspace`, and `tests/two_nodes.sh` for two daemons on one machine (`OG_NETWORK=n0 tests/two_nodes.sh` routes through Iroh's relays).
+
 ## At a glance
 
 A push never leaves your machine unsigned: your daemon writes and signs it, announces it, and peers pull it.
@@ -16,15 +45,15 @@ Every machine runs the same stack. The daemon is the trust boundary, because not
 
 Each of your seven goals maps to one concrete design choice. Only the first needs a caveat: "completely decentralized" in practice means no *required* central party, so optional bootstrap, relay and seed nodes are fine as long as anyone can replace them.
 
-| # | Your goal | How it is met | Main component |
-| --- | --- | --- | --- |
-| 1 | Completely decentralized | Keys instead of accounts. Every peer can hold a full copy of a repo. | Ed25519 identity, signed refs |
-| 2 | P2P, Freenet-style | Direct QUIC connections dialed by public key, gossip for updates, a DHT for discovery. Peers host only the repos they choose to follow. | Iroh, gossip, DHT |
-| 3 | Fast download and upload | Reuse Git packfiles, fetch from several peers in parallel, run always-on seed nodes. | Pack negotiation, multi-peer fetch |
-| 4 | Easy developer circle | A signed identity document lists delegates and a signature threshold. Invite links add contributors. | Repo identity document |
-| 5 | Seamless and super fast | Rust. A long-running daemon keeps connections warm, so `git push` pays no connection setup. | Daemon, remote helper |
-| 6 | Easy to set up | One static binary. First run creates keys, starts the daemon and finds peers. | CLI |
-| 7 | Helpful to developers | Works with plain `git`. Issues and patches travel with the code and work offline. | `git-remote-p2p`, collaborative objects |
+| #   | Your goal                | How it is met                                                                                                                           | Main component                          |
+| --- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| 1   | Completely decentralized | Keys instead of accounts. Every peer can hold a full copy of a repo.                                                                    | Ed25519 identity, signed refs           |
+| 2   | P2P, Freenet-style       | Direct QUIC connections dialed by public key, gossip for updates, a DHT for discovery. Peers host only the repos they choose to follow. | Iroh, gossip, DHT                       |
+| 3   | Fast download and upload | Reuse Git packfiles, fetch from several peers in parallel, run always-on seed nodes.                                                    | Pack negotiation, multi-peer fetch      |
+| 4   | Easy developer circle    | A signed identity document lists delegates and a signature threshold. Invite links add contributors.                                    | Repo identity document                  |
+| 5   | Seamless and super fast  | Rust. A long-running daemon keeps connections warm, so `git push` pays no connection setup.                                             | Daemon, remote helper                   |
+| 6   | Easy to set up           | One static binary. First run creates keys, starts the daemon and finds peers.                                                           | CLI                                     |
+| 7   | Helpful to developers    | Works with plain `git`. Issues and patches travel with the code and work offline.                                                       | `git-remote-p2p`, collaborative objects |
 
 Use Rust, not C++. Both are fast enough, but parsing untrusted peer data is where C++ network code collects its security bugs, and the best building blocks (Iroh, gitoxide) are Rust.
 
@@ -32,12 +61,12 @@ Use Rust, not C++. Both are fast enough, but parsing untrusted peer data is wher
 
 Reuse Radicle's trust model and Iroh's transport, then differentiate on speed and setup instead of rebuilding either. Decide what yours does better before writing code, or you will end up with a second Radicle.
 
-| Project | Take this | Watch out for |
-| --- | --- | --- |
-| [Radicle](https://radicle.dev/guides/protocol) | Node IDs as Ed25519 keys, a repo ID derived from a signed identity document at `refs/rad/id`, per-peer ref namespaces, signed refs at `refs/rad/sigrefs`, gossip announcements, issues and patches under `refs/cobs/` | Repo IDs are SHA-1 digests. Its protocol guide removed the transport-encryption section over a disclosed vulnerability, so do not copy its custom handshake. |
-| [Iroh](https://docs.rs/crate/iroh/latest) (1.4.0, 2026-10-20) | QUIC connections dialed by public key, hole punching, encrypted relay fallback. The [1.0 post](https://iroh.computer/blog/the-road-to-iroh-1-0) says the wire format and API are stable. | Address lookup is centralized by default (an optional mainline DHT mode exists). Relays trade some P2P purity for reliability. |
-| [gitoxide](https://github.com/GitoxideLabs/gitoxide) (`gix`) | Pure-Rust clone, fetch, packfile and commit-graph code for reading and verifying repos | Its project page lists push as not implemented, so use Git's own plumbing for building and receiving packs. |
-| libp2p | An alternative network stack with a DHT and gossip built in | More modular and heavier than Iroh, so more setup work. |
+| Project                                                       | Take this                                                                                                                                                                                                             | Watch out for                                                                                                                                                |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [Radicle](https://radicle.dev/guides/protocol)                | Node IDs as Ed25519 keys, a repo ID derived from a signed identity document at `refs/rad/id`, per-peer ref namespaces, signed refs at `refs/rad/sigrefs`, gossip announcements, issues and patches under `refs/cobs/` | Repo IDs are SHA-1 digests. Its protocol guide removed the transport-encryption section over a disclosed vulnerability, so do not copy its custom handshake. |
+| [Iroh](https://docs.rs/crate/iroh/latest) (1.4.0, 2026-10-20) | QUIC connections dialed by public key, hole punching, encrypted relay fallback. The [1.0 post](https://iroh.computer/blog/the-road-to-iroh-1-0) says the wire format and API are stable.                              | Address lookup is centralized by default (an optional mainline DHT mode exists). Relays trade some P2P purity for reliability.                               |
+| [gitoxide](https://github.com/GitoxideLabs/gitoxide) (`gix`)  | Pure-Rust clone, fetch, packfile and commit-graph code for reading and verifying repos                                                                                                                                | Its project page lists push as not implemented, so use Git's own plumbing for building and receiving packs.                                                  |
+| libp2p                                                        | An alternative network stack with a DHT and gossip built in                                                                                                                                                           | More modular and heavier than Iroh, so more setup work.                                                                                                      |
 
 ## Stack and workspace
 
